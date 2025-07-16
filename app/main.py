@@ -4,23 +4,48 @@ import os
 import hmac
 import hashlib
 import logging
+from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
 SECRET = os.getenv("SCALEFUSION_SECRET")
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO,  # Change to DEBUG for more detail
-    format="%(asctime)s [%(levelname)s] %(message)s"
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+log_format = "%(asctime)s [%(levelname)s] %(message)s"
+
+os.makedirs("logs", exist_ok=True)
+log_filename = datetime.now().strftime("logs/assetsync-%Y%m%d.log")
+
+# Set up TimedRotatingFileHandler to rotate daily
+file_handler = TimedRotatingFileHandler(
+    log_filename,
+    when="midnight",
+    interval=1,
+    backupCount=7,  # Keep last 7 days
+    encoding="utf-8"
 )
+file_handler.suffix = "%Y%m%d"
+file_handler.setFormatter(logging.Formatter(log_format))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter(log_format))
+
+# Apply logging config
+logging.basicConfig(
+    level=getattr(logging, log_level),
+    handlers=[console_handler, file_handler]
+)
+
 logger = logging.getLogger(__name__)
 
+# Flask app setup
 app = Flask(__name__)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # Get the raw body and the signature from header
     raw_body = request.get_data()
     header_signature = request.headers.get("X-SF-Signature")
 
@@ -31,7 +56,6 @@ def webhook():
         logger.warning("Missing signature or secret")
         abort(400, "Missing signature or secret")
 
-    # Compute HMAC-SHA256 using the secret
     computed_signature = hmac.new(
         SECRET.encode(),
         raw_body,
@@ -42,10 +66,9 @@ def webhook():
         logger.error("❌ Signature mismatch!")
         abort(403, "Invalid signature")
 
-    # Signature is valid, parse the payload
     data = request.json
     logger.info("✅ Verified webhook received:")
-    logger.info(data)
+    logger.debug(data)
     logger.debug(f"Snipe-IT URL: {os.getenv('SNIPEIT_URL')}")
 
     return "OK", 200
