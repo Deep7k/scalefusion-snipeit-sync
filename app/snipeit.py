@@ -28,14 +28,26 @@ class SnipeITClient:
         # Step 1: Check if asset exists
         try:
             check_url = f"{self.url}/api/v1/hardware/bytag/{asset_tag}"
+            self.logger.debug(f"🔍 Checking asset with tag '{asset_tag}' at {check_url}")
             check_resp = requests.get(check_url, headers=headers, timeout=10)
 
             if check_resp.status_code == 200:
-                self.logger.info(f"🟡 Asset with tag '{asset_tag}' already exists in Snipe-IT.")
-                return  # Exit early — asset already exists
-
-            elif check_resp.status_code != 404:
-                # 404 is okay (not found), but anything else is an issue
+                # Parse the response to confirm if the asset actually exists
+                try:
+                    resp_json = check_resp.json()
+                    self.logger.debug(f"📋 Asset check response: {resp_json}")
+                    # Check if the response indicates an actual asset
+                    if resp_json.get("id") or (resp_json.get("rows") and len(resp_json.get("rows")) > 0):
+                        self.logger.info(f"🟡 Asset with tag '{asset_tag}' already exists in Snipe-IT.")
+                        return  # Asset exists, exit early
+                    else:
+                        self.logger.debug(f"🟢 No asset found for tag '{asset_tag}', proceeding to create.")
+                except ValueError:
+                    self.logger.error(f"❌ Invalid JSON response from asset check: {check_resp.text}")
+                    return
+            elif check_resp.status_code == 404:
+                self.logger.debug(f"🟢 No asset found for tag '{asset_tag}' (404), proceeding to create.")
+            else:
                 self.logger.error(f"❌ Error checking asset: {check_resp.status_code} - {check_resp.text}")
                 return
         except requests.RequestException as e:
@@ -66,6 +78,5 @@ class SnipeITClient:
                 self.logger.info(f"✅ Asset '{asset_tag}' created in Snipe-IT: {resp_json.get('messages')}")
             else:
                 self.logger.error(f"❌ Asset creation failed: {resp_json}")
-
         except requests.RequestException as e:
             self.logger.exception(f"❌ Exception posting to Snipe-IT: {e}")
