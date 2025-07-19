@@ -16,7 +16,7 @@ def create_app(config: Config) -> Flask:  # Remove quotes around Config
         raw_body = request.get_data()
         header_signature = request.headers.get("X-SF-Signature")
 
-        logger.debug(f"🔒 Loaded SCALEFUSION_SECRET: {'*' * len(config.SECRET) if config.SECRET else 'None'}")
+        logger.debug("🔒 SCALEFUSION_SECRET is configured")
         logger.debug(f"🔑 Incoming X-SF-Signature: {header_signature}")
 
         if not config.SECRET or not header_signature:
