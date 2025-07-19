@@ -14,7 +14,6 @@ def setup_logger(log_level: str) -> logging.Logger:
         interval=1,
         backupCount=7,
         encoding="utf-8",
-        maxBytes=10*1024*1024
     )
     file_handler.suffix = "%Y%m%d"
     file_handler.setFormatter(logging.Formatter(log_format))
