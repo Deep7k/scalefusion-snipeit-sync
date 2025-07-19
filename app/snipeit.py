@@ -19,7 +19,30 @@ class SnipeITClient:
             self.logger.warning(f"⚠️ Missing asset tag or serial number for device: {device}")
             return
 
-        # TODO: Fix hardcoded asset_tag and dynamically resolve model_id/status_id
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        # Step 1: Check if asset exists
+        try:
+            check_url = f"{self.url}/api/v1/hardware/bytag/{asset_tag}"
+            check_resp = requests.get(check_url, headers=headers, timeout=10)
+
+            if check_resp.status_code == 200:
+                self.logger.info(f"🟡 Asset with tag '{asset_tag}' already exists in Snipe-IT.")
+                return  # Exit early — asset already exists
+
+            elif check_resp.status_code != 404:
+                # 404 is okay (not found), but anything else is an issue
+                self.logger.error(f"❌ Error checking asset: {check_resp.status_code} - {check_resp.text}")
+                return
+        except requests.RequestException as e:
+            self.logger.exception(f"❌ Exception checking existing asset in Snipe-IT: {e}")
+            return
+
+        # Step 2: Proceed to create if asset not found
         asset_payload = {
             "asset_tag": asset_tag,
             "serial": serial,
@@ -28,15 +51,8 @@ class SnipeITClient:
             "name": asset_tag
         }
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-
         try:
             self.logger.debug(f"📡 Sending asset to Snipe-IT: {asset_payload}")
-            self.logger.debug(f"Snipe-IT URL: {self.url}/api/v1/hardware")
             response = requests.post(
                 f"{self.url}/api/v1/hardware",
                 json=asset_payload,
