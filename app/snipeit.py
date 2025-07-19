@@ -1,3 +1,5 @@
+# snipeit.py
+
 import requests
 import logging
 from typing import Dict, Optional
@@ -8,6 +10,36 @@ class SnipeITClient:
         self.url = url.rstrip("/")
         self.api_key = api_key
         self.logger = logger
+
+    def get_model_id(self, model_name: str, manufacturer: Optional[str]) -> Optional[int]:
+        """Fetch model_id from Snipe-IT API based on model name and manufacturer."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        try:
+            self.logger.debug(f"🔍 Fetching models from {self.url}/api/v1/models")
+            response = requests.get(f"{self.url}/api/v1/models", headers=headers, timeout=10)
+            response.raise_for_status()
+            models = response.json().get("rows", [])
+            
+            for model in models:
+                # Match model name (case-insensitive) and optionally manufacturer
+                if model.get("name", "").lower() == model_name.lower():
+                    if manufacturer and model.get("manufacturer"):
+                        if model["manufacturer"].get("name", "").lower() == manufacturer.lower():
+                            self.logger.debug(f"✅ Found model_id {model['id']} for model '{model_name}' and manufacturer '{manufacturer}'")
+                            return model["id"]
+                    elif not manufacturer:
+                        self.logger.debug(f"✅ Found model_id {model['id']} for model '{model_name}' (no manufacturer check)")
+                        return model["id"]
+            
+            self.logger.warning(f"⚠️ No matching model found for model '{model_name}' and manufacturer '{manufacturer}'")
+            return None
+        except requests.RequestException as e:
+            self.logger.exception(f"❌ Exception fetching models from Snipe-IT: {e}")
+            return None
 
     def sync_device(self, device: Dict[str, str]) -> None:
         asset_tag = device.get("name")
@@ -32,14 +64,12 @@ class SnipeITClient:
             check_resp = requests.get(check_url, headers=headers, timeout=10)
 
             if check_resp.status_code == 200:
-                # Parse the response to confirm if the asset actually exists
                 try:
                     resp_json = check_resp.json()
                     self.logger.debug(f"📋 Asset check response: {resp_json}")
-                    # Check if the response indicates an actual asset
                     if resp_json.get("id") or (resp_json.get("rows") and len(resp_json.get("rows")) > 0):
                         self.logger.info(f"🟡 Asset with tag '{asset_tag}' already exists in Snipe-IT.")
-                        return  # Asset exists, exit early
+                        return
                     else:
                         self.logger.debug(f"🟢 No asset found for tag '{asset_tag}', proceeding to create.")
                 except ValueError:
@@ -54,12 +84,18 @@ class SnipeITClient:
             self.logger.exception(f"❌ Exception checking existing asset in Snipe-IT: {e}")
             return
 
-        # Step 2: Proceed to create if asset not found
+        # Step 2: Get model_id dynamically
+        model_id = self.get_model_id(model_name, manufacturer)
+        if not model_id:
+            self.logger.error(f"❌ Could not determine model_id for model '{model_name}' and manufacturer '{manufacturer}'")
+            return
+
+        # Step 3: Proceed to create if asset not found
         asset_payload = {
             "asset_tag": asset_tag,
             "serial": serial,
-            "model_id": 2,  # TODO: Dynamically resolve
-            "status_id": 2,  # TODO: Dynamically resolve
+            "model_id": model_id,
+            "status_id": 2,
             "name": asset_tag
         }
 
